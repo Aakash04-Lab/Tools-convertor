@@ -9,15 +9,27 @@ import authRoutes from './routes/authRoutes.js';
 import toolRoutes from './routes/toolRoutes.js';
 import fs from 'fs';
 
-dotenv.config();
-const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, '../.env') });
+
+const app = express();
 
 const tempDir = process.env.VERCEL ? path.join(os.tmpdir(), 'mern-tools-suite') : path.join(__dirname, 'temp');
 if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`CORS blocked origin: ${origin}`));
+  },
+  credentials: true
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use('/downloads', express.static(tempDir, {
   setHeaders: (res, filePath) => {
@@ -39,7 +51,14 @@ export const ensureDBConnection = () => {
 
 if (!process.env.VERCEL) {
   ensureDBConnection().then(() => {
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    server.on('error', (error) => {
+      if (error.code === 'EADDRINUSE') {
+        console.error(`Port ${PORT} is already in use. Stop the old server or change PORT in server/.env.`);
+        process.exit(1);
+      }
+      throw error;
+    });
   });
 }
 
