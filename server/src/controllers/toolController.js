@@ -3,7 +3,6 @@ import fsSync from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import { PDFDocument } from 'pdf-lib';
-import pdfPoppler from 'pdf-poppler';
 import axios from 'axios';
 import FormData from 'form-data';
 import { fileURLToPath } from 'url';
@@ -49,6 +48,12 @@ export const compressImage = async (req, res) => {
 export const pdfToJpg = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'Upload a PDF' });
+    if (process.platform !== 'win32') {
+      await safeDelete(req.file.path);
+      return res.status(501).json({ message: 'PDF to JPG is not available on this Linux deployment.' });
+    }
+
+    const { default: pdfPoppler } = await import('pdf-poppler');
     const outputPrefix = `pdf-page-${uuidv4()}`;
     const options = { format: 'jpeg', out_dir: tempDir, out_prefix: outputPrefix, page: null };
     await pdfPoppler.convert(req.file.path, options);
