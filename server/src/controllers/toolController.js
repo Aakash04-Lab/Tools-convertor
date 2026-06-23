@@ -12,7 +12,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const tempDir = path.join(__dirname, '../temp');
 
-const publicUrl = (req, file) => `${req.protocol}://${req.get('host')}/downloads/${file}`;
+const publicUrl = (req, file) => {
+  const forwardedProto = req.get('x-forwarded-proto')?.split(',')[0]?.trim();
+  const protocol = forwardedProto || req.protocol;
+  return `${protocol}://${req.get('host')}/downloads/${file}`;
+};
 const safeDelete = async (file) => { try { await fs.unlink(file); } catch {} };
 
 export const jpgToPdf = async (req, res) => {

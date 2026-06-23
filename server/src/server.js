@@ -14,6 +14,7 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
+app.set('trust proxy', 1);
 
 const tempDir = process.env.VERCEL ? path.join(os.tmpdir(), 'mern-tools-suite') : path.join(__dirname, 'temp');
 if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
