@@ -7,10 +7,13 @@ import axios from 'axios';
 import FormData from 'form-data';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const tempDir = path.join(__dirname, '../temp');
+const execFileAsync = promisify(execFile);
 
 const publicUrl = (req, file) => {
   const forwardedProto = req.get('x-forwarded-proto')?.split(',')[0]?.trim();
@@ -52,19 +55,24 @@ export const compressImage = async (req, res) => {
 export const pdfToJpg = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'Upload a PDF' });
-    if (process.platform !== 'win32') {
-      await safeDelete(req.file.path);
-      return res.status(501).json({ message: 'PDF to JPG is not available on this Linux deployment.' });
+    const outputPrefix = `pdf-page-${uuidv4()}`;
+
+    if (process.platform === 'win32') {
+      const { default: pdfPoppler } = await import('pdf-poppler');
+      const options = { format: 'jpeg', out_dir: tempDir, out_prefix: outputPrefix, page: null };
+      await pdfPoppler.convert(req.file.path, options);
+    } else {
+      const outputPath = path.join(tempDir, outputPrefix);
+      await execFileAsync('pdftoppm', ['-jpeg', '-r', '150', req.file.path, outputPath]);
     }
 
-    const { default: pdfPoppler } = await import('pdf-poppler');
-    const outputPrefix = `pdf-page-${uuidv4()}`;
-    const options = { format: 'jpeg', out_dir: tempDir, out_prefix: outputPrefix, page: null };
-    await pdfPoppler.convert(req.file.path, options);
     await safeDelete(req.file.path);
-    const files = fsSync.readdirSync(tempDir).filter(f => f.startsWith(outputPrefix) && f.endsWith('.jpg'));
+    const files = fsSync.readdirSync(tempDir)
+      .filter(f => f.startsWith(outputPrefix) && f.endsWith('.jpg'))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     res.json({ message: 'PDF converted to JPG', files: files.map(f => publicUrl(req, f)) });
   } catch (error) {
+    await safeDelete(req.file?.path);
     res.status(500).json({ message: `${error.message}. Make sure Poppler is installed and available in PATH.` });
   }
 };
